@@ -1,0 +1,50 @@
+name: ci-check-language-selector (temporary, fork only; the CI test job without other triggers)
+
+on:
+  push:
+    branches:
+      - ci-check-language-selector
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    env:
+      DJANGO_SETTINGS_MODULE: apps.guide.settings.test
+      DATABASE_URL: postgres://postgres:postgres@localhost/postgres # pragma: allowlist secret
+      SECRET_KEY: iamnotsosecret
+      ALLOWED_HOSTS: localhost
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres # pragma: allowlist secret
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: '.nvmrc'
+      - run: npm ci
+      - run: npm run build
+      - run: npm run lint
+      - run: npm test
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+      - run: uv sync --frozen
+      - run: just lint-backend
+      - run: uv run python manage.py check
+      - run: uv run python manage.py createcachetable
+      - run: uv run python manage.py makemigrations --check
+      - run: just test-coverage
